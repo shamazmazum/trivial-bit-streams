@@ -78,7 +78,9 @@ is greater than the size of the internal buffer"))
   (end 0 :type non-negative-fixnum)
   (ibyte 0 :type non-negative-fixnum)
   (ibit  0 :type bit-counter)
-  (byte-counter 0 :type unsigned-byte))
+  (byte-counter 0 :type
+                #+trivial-bit-streams-restricted fixnum
+                #-trivial-bit-streams-restricted unsigned-byte))
 
 (declaim (inline make-bit-output-stream-core))
 (defstruct (bit-output-stream-core

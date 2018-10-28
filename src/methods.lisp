@@ -24,7 +24,9 @@
 
 (in-package #:trivial-bit-streams)
 
-(declaim (optimize (speed 3)))
+(declaim (optimize (speed 3)
+                   #+trivial-bit-streams-unsafe
+                   (safety 0)))
 
 (defun bit-stream-byte-counter (bit-stream)
   (declare (type bit-stream bit-stream))
@@ -102,7 +104,9 @@
 
 (defun write-bits (bits bits-to-write bit-stream)
   (declare (type bit-output-stream bit-stream)
-           (type unsigned-byte bits)
+           (type #+trivial-bit-streams-restricted non-negative-fixnum
+                 #-trivial-bit-streams-restricted unsigned-byte
+                 bits)
            (type non-negative-fixnum bits-to-write))
 "Writes a sequence of bits to the bit output stream
 starting from the least significant bit of the supplied integer."
@@ -121,7 +125,8 @@ starting from the least significant bit of the supplied integer."
             (rv bits)
             (current-octet (ldb (byte ibit 0) (aref buffer ibyte))))
         (declare (type ub8 current-octet)
-                 (type unsigned-byte rv))
+                 (type #+trivial-bit-stream-restricted non-negative-fixnum
+                       #-trivial-bit-stream-restricted unsigned-byte rv))
         (dotimes (i (ceiling (+ ibit bits-to-write) 8) rv)
           (let ((bits-to-add (min bits-to-write (- 8 ibit))))
             (declare (type (integer 0 8) bits-to-add))
@@ -193,6 +198,32 @@ starting from the least significant bit of the supplied integer."
               (incf ibyte bytes-to-add)
               (incf byte-counter bytes-to-add)
               (ensure-output bit-stream-core callback))))))
+
+(defun pad-to-byte-alignment (bit bit-stream)
+  (declare (type bit-output-stream bit-stream)
+           (type bit bit))
+  "Pad the output stream with BITs to reach the byte alignment. Returns
+written bits."
+  (unless (open-stream-p bit-stream)
+    (error 'bit-stream-closed-error :stream bit-stream))
+  (let ((bit-stream-core (slot-value bit-stream 'core)))
+    (declare (type bit-output-stream-core bit-stream-core))
+    (with-accessors ((ibit bit-stream-core-ibit)
+                     (ibyte bit-stream-core-ibyte)
+                     (byte-counter bit-stream-core-byte-counter)
+                     (buffer bit-stream-core-buffer))
+        bit-stream-core
+      (if (zerop ibit) (return-from pad-to-byte-alignment 0))
+      (let* ((bits-to-write (- 8 ibit))
+             (bits (max 0 (1- (ash bit bits-to-write)))))
+        (setf (aref buffer ibyte)
+              (dpb bits
+                   (byte bits-to-write ibit)
+                   (ldb (byte ibit 0) (aref buffer ibyte))))
+        (incf byte-counter)
+        (inc-bit-counter bit-stream-core bits-to-write)
+        (ensure-output bit-stream-core (bit-stream-callback bit-stream))
+        bits))))
 
 (defun flush-bit-output-stream (bit-stream)
   (declare (type bit-output-stream bit-stream))
@@ -329,18 +360,22 @@ which may be less than the requested count."
         bit-stream-core
       (let ((result 0)
             (result-size 0))
-        (declare (type unsigned-byte result)
+        (declare (type #+trivial-bit-streams-restricted non-negative-fixnum
+                       #-trivial-bit-streams-restricted unsigned-byte
+                       result)
                  (type non-negative-fixnum result-size))
         (dotimes (i (ceiling (+ bits-to-read ibit) 8))
           (unless (ensure-input bit-stream-core bit-stream)
             (return-from read-bits (values result result-size)))
           (let ((bits-to-add (min bits-to-read (- 8 ibit))))
             (declare (type (integer 0 8) bits-to-add))
-            (setf result (logior
-                           result
-                           (ash (ldb (byte bits-to-add ibit)
-                                     (aref buffer ibyte))
-                                result-size))
+            (setf result
+                  (logior result
+                          (the #+trivial-bit-streams-restricted non-negative-fixnum
+                               #-trivial-bit-streams-restricted unsigned-byte
+                               (ash (ldb (byte bits-to-add ibit)
+                                         (aref buffer ibyte))
+                                    result-size)))
                   bits-to-read (- bits-to-read bits-to-add)
                   result-size (+ result-size bits-to-add))
             (when (zerop ibit) (incf byte-counter))
@@ -405,6 +440,30 @@ from bit input stream. Returns the total number of octets readen."
                 (incf ibyte bytes-to-add)
                 (incf byte-counter bytes-to-add)))))))
 
+(defun read-to-byte-alignment (bit-stream &optional (eof-error-p T) eof-value)
+  (declare (type bit-input-stream bit-stream))
+  "Retrieves bits needed to reach byte alignment from the input stream.
+May read 0 to 7 bits."
+  (unless (open-stream-p bit-stream)
+    (error 'bit-stream-closed-error :stream bit-stream))
+  (let ((bit-stream-core (slot-value bit-stream 'core)))
+    (declare (type bit-input-stream-core bit-stream-core))
+    (unless (ensure-input bit-stream-core bit-stream)
+      (if eof-error-p
+        (error 'bit-stream-end-of-file :stream bit-stream)
+        (return-from read-to-byte-alignment eof-value)))
+    (with-accessors ((ibit bit-stream-core-ibit)
+                     (ibyte bit-stream-core-ibyte)
+                     (byte-counter bit-stream-core-byte-counter)
+                     (buffer bit-stream-core-buffer))
+                    bit-stream-core
+                    (if (zerop ibit) (return-from read-to-byte-alignment 0))
+                    (let ((size (- 8 ibit)))
+                      (prog1 (ldb (byte size ibit)
+                                  (aref buffer ibyte))
+                        (inc-bit-counter bit-stream-core size)
+                        (incf byte-counter))))))
+
 (defun flush-bit-input-stream (bit-stream)
   (declare (type bit-input-stream bit-stream))
 "Resets stream's internal bit counters, effectively
@@ -443,7 +502,8 @@ invalidating current contents of the stream's buffer."
            (type non-negative-fixnum start end))
   (if *bit-stream-bit-io*
     (multiple-value-bind
-        (result size) (read-bits (max 0 (- end start)) stream)      
+          (result size) (read-bits (max 0 (- end start)) stream)
+      (declare (type non-negative-fixnum size))
       (loop :for count :below size
         :for i :from start :below end
         :do (setf (elt sequence i) (ldb (byte 1 i) result))

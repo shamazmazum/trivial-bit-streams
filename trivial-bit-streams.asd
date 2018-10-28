@@ -22,6 +22,10 @@
 ;;; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 ;;; DEALINGS IN THE SOFTWARE.
 
+(eval-when (:load-toplevel :compile-toplevel :execute)
+  (pushnew :trivial-bit-streams-restricted *features*)
+  (pushnew :trivial-bit-streams-unsafe *features*))
+
 (defsystem #:trivial-bit-streams
   :version "0.1.2"
   :description "Trivial bit streams"

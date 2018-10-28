@@ -321,7 +321,9 @@ written bits."
               (setf bytes-available (length buffer)))))
         (setf ibit 0 ibyte 0 end bytes-available)
         (not (zerop (the non-negative-fixnum bytes-available)))))))
-  
+
+(declaim (ftype (function (bit-input-stream &optional boolean t) bit)
+                read-bit))
 (defun read-bit (bit-stream &optional (eof-error-p T) eof-value)
   (declare (type bit-input-stream bit-stream))
   "Retrieves the next bit from bit input stream."
@@ -342,6 +344,11 @@ written bits."
       (prog1 (ldb (byte 1 ibit) (aref buffer ibyte))
        (inc-bit-counter bit-stream-core)))))
 
+(declaim (ftype
+          (function (non-negative-fixnum bit-input-stream &optional)
+                    #+trivial-bit-streams-restricted non-negative-fixnum
+                    #-trivial-bit-streams-restricted unsigned-byte)
+          read-bits))
 (defun read-bits (bits-to-read bit-stream)
   (declare (type bit-input-stream bit-stream)
            (type non-negative-fixnum bits-to-read))
@@ -382,6 +389,9 @@ which may be less than the requested count."
             (inc-bit-counter bit-stream-core bits-to-add)))
         (values result result-size)))))
 
+(declaim (ftype (function (bit-input-stream &optional boolean t)
+                          ub8)
+                read-octet))
 (defun read-octet (bit-stream &optional (eof-error-p T) eof-value)
   (declare (type bit-input-stream bit-stream))
   "Retrieves the next non-packed octet from the bit input stream."
@@ -440,6 +450,9 @@ from bit input stream. Returns the total number of octets readen."
                 (incf ibyte bytes-to-add)
                 (incf byte-counter bytes-to-add)))))))
 
+(declaim (ftype (function (bit-input-stream &optional boolean t)
+                          ub8)
+                read-to-byte-alignment))
 (defun read-to-byte-alignment (bit-stream &optional (eof-error-p T) eof-value)
   (declare (type bit-input-stream bit-stream))
   "Retrieves bits needed to reach byte alignment from the input stream.

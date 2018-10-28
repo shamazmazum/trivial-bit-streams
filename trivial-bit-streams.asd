@@ -24,6 +24,7 @@
 
 (eval-when (:load-toplevel :compile-toplevel :execute)
   (pushnew :trivial-bit-streams-restricted *features*)
+  #+nil
   (pushnew :trivial-bit-streams-unsafe *features*))
 
 (defsystem #:trivial-bit-streams

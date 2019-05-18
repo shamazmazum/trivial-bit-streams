@@ -461,21 +461,23 @@ May read 0 to 7 bits."
     (error 'bit-stream-closed-error :stream bit-stream))
   (let ((bit-stream-core (slot-value bit-stream 'core)))
     (declare (type bit-input-stream-core bit-stream-core))
-    (unless (ensure-input bit-stream-core bit-stream)
-      (if eof-error-p
-        (error 'bit-stream-end-of-file :stream bit-stream)
-        (return-from read-to-byte-alignment eof-value)))
     (with-accessors ((ibit bit-stream-core-ibit)
                      (ibyte bit-stream-core-ibyte)
                      (byte-counter bit-stream-core-byte-counter)
                      (buffer bit-stream-core-buffer))
-                    bit-stream-core
-                    (if (zerop ibit) (return-from read-to-byte-alignment 0))
-                    (let ((size (- 8 ibit)))
-                      (prog1 (ldb (byte size ibit)
-                                  (aref buffer ibyte))
-                        (inc-bit-counter bit-stream-core size)
-                        (incf byte-counter))))))
+        bit-stream-core
+
+      (if (zerop ibit)
+          (return-from read-to-byte-alignment 0)
+          (unless (ensure-input bit-stream-core bit-stream)
+            (if eof-error-p
+                (error 'bit-stream-end-of-file :stream bit-stream)
+                (return-from read-to-byte-alignment eof-value))))
+      (let ((size (- 8 ibit)))
+        (prog1 (ldb (byte size ibit)
+                    (aref buffer ibyte))
+          (inc-bit-counter bit-stream-core size)
+          (incf byte-counter))))))
 
 (defun flush-bit-input-stream (bit-stream)
   (declare (type bit-input-stream bit-stream))

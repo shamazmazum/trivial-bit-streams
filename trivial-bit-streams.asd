@@ -34,9 +34,9 @@
                     :components ((:file "package")
                                  (:file "classes")
                                  (:file "methods"))))
+  :in-order-to ((test-op (load-op "trivial-bit-streams-tests")))
   :perform (test-op (op system)
                     (declare (ignore op system))
-                    (asdf:load-system :trivial-bit-streams-tests)
                     (funcall
                      (intern "RUN-TESTS" (find-package "TBS-TESTS")))))
 
